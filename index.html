@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>3D Soccer Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+        }
+        .ui-element {
+            position: absolute;
+            z-index: 10;
+        }
+        #score {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        #restartBtn {
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            background-color: rgba(255, 100, 0, 0.8);
+            border: 2px solid white;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.5);
+        }
+        #restartBtn:active {
+            transform: scale(0.95);
+        }
+        #goalMessage {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 64px;
+            font-weight: bold;
+            color: #00ff00;
+            text-shadow: 4px 4px 8px rgba(0,0,0,0.9);
+            display: none;
+            animation: pulse 0.5s ease-in-out;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+        }
+        #controls {
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .mobile-control {
+            position: absolute;
+            z-index: 100;
+        }
+        #joystickBase {
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            display: none;
+        }
+        #joystickStick {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.8);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        #shootBtn {
+            bottom: 160px;
+            right: 40px;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background-color: rgba(255, 50, 50, 0.8);
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        #powerShootBtn {
+            bottom: 40px;
+            right: 40px;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background-color: rgba(255, 140, 0, 0.8);
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            color: white;
+            font-size: 13px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #powerShootBtn.active {
+            background-color: rgba(255, 215, 0, 0.9);
+        }
+        #powerBar {
+            bottom: 145px;
+            right: 40px;
+            width: 90px;
+            height: 20px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            border: 2px solid white;
+            overflow: hidden;
+            display: none;
+        }
+        #powerBarFill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.05s linear, background-color 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer"></div>
+    
+    <div id="score" class="ui-element">Score: 0</div>
+    <button id="restartBtn" class="ui-element">🔄 Restart</button>
+    <div id="goalMessage" class="ui-element">You Scored! ⚽</div>
+    <div id="controls" class="ui-element"></div>
+    
+    <!-- Mobile Controls -->
+    <div id="joystickBase" class="mobile-control">
+        <div id="joystickStick"></div>
+    </div>
+    <button id="shootBtn" class="mobile-control">SHOOT<br/>⚽</button>
+    <button id="powerShootBtn" class="mobile-control">
+        <div>POWER</div>
+        <div>SHOOT</div>
+        <div style="font-size: 18px;">⚡</div>
+    </button>
+    <div id="powerBar" class="mobile-control">
+        <div id="powerBarFill"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let ball, player, goalkeeper;
+        let ballVelocity = new THREE.Vector3(0, 0, 0);
+        let ballSpin = new THREE.Vector3(0, 0, 0);
+        let gkVelocity = new THREE.Vector3(0, 0, 0);
+        let trajectoryLine;
+        let score = 0;
+        let gkDirection = 1;
+        let gkJumping = false;
+
+        const keys = {};
+        const joystick = { x: 0, y: 0 };
+        const powerShoot = { active: false, power: 0 };
+        let powerInterval = null;
+        let shootTriggered = false;
+
+        const friction = 0.96;
+        const airResistance = 0.985;
+        const gravity = -0.6;
+        const bounceDamping = 0.65;
+        const spinDecay = 0.98;
+
+        const isMobile = 'ontouchstart' in window;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 25);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('gameContainer').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // Field
+            const fieldGeometry = new THREE.PlaneGeometry(40, 60);
+            const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x2d8b3c });
+            const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+            field.rotation.x = -Math.PI / 2;
+            field.receiveShadow = true;
+            scene.add(field);
+
+            // Borders
+            const borderHeight = 2;
+            const borderMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513, transparent: true, opacity: 0.5 });
+
+            const leftBorder = new THREE.Mesh(new THREE.BoxGeometry(1, borderHeight, 60), borderMaterial);
+            leftBorder.position.set(-20, borderHeight / 2, 0);
+            scene.add(leftBorder);
+
+            const rightBorder = new THREE.Mesh(new THREE.BoxGeometry(1, borderHeight, 60), borderMaterial);
+            rightBorder.position.set(20, borderHeight / 2, 0);
+            scene.add(rightBorder);
+
+            const backBorder = new THREE.Mesh(new THREE.BoxGeometry(40, borderHeight, 1), borderMaterial);
+            backBorder.position.set(0, borderHeight / 2, 30);
+            scene.add(backBorder);
+
+            const frontBorderLeft = new THREE.Mesh(new THREE.BoxGeometry(16, borderHeight, 1), borderMaterial);
+            frontBorderLeft.position.set(-14, borderHeight / 2, -30);
+            scene.add(frontBorderLeft);
+
+            const frontBorderRight = new THREE.Mesh(new THREE.BoxGeometry(16, borderHeight, 1), borderMaterial);
+            frontBorderRight.position.set(14, borderHeight / 2, -30);
+            scene.add(frontBorderRight);
+
+            // Field lines
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+            const centerLine = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-20, 0.1, 0),
+                new THREE.Vector3(20, 0.1, 0)
+            ]);
+            scene.add(new THREE.Line(centerLine, lineMaterial));
+
+            const centerCircle = new THREE.RingGeometry(5, 5.2, 32);
+            const circle = new THREE.Mesh(centerCircle, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+            circle.rotation.x = -Math.PI / 2;
+            circle.position.y = 0.1;
+            scene.add(circle);
+
+            // Goal
+            const goalWidth = 8;
+            const goalHeight = 4;
+            const goalPostMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+            const postGeometry = new THREE.CylinderGeometry(0.15, 0.15, goalHeight, 8);
+            const leftPost = new THREE.Mesh(postGeometry, goalPostMaterial);
+            leftPost.position.set(-goalWidth / 2, goalHeight / 2, -29);
+            leftPost.castShadow = true;
+            scene.add(leftPost);
+
+            const rightPost = new THREE.Mesh(postGeometry, goalPostMaterial);
+            rightPost.position.set(goalWidth / 2, goalHeight / 2, -29);
+            rightPost.castShadow = true;
+            scene.add(rightPost);
+
+            const crossbarGeometry = new THREE.CylinderGeometry(0.15, 0.15, goalWidth, 8);
+            const crossbar = new THREE.Mesh(crossbarGeometry, goalPostMaterial);
+            crossbar.rotation.z = Math.PI / 2;
+            crossbar.position.set(0, goalHeight, -29);
+            crossbar.castShadow = true;
+            scene.add(crossbar);
+
+            const netGeometry = new THREE.PlaneGeometry(goalWidth, goalHeight);
+            const netMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xcccccc, 
+                transparent: true, 
+                opacity: 0.3,
+                side: THREE.DoubleSide 
+            });
+            const net = new THREE.Mesh(netGeometry, netMaterial);
+            net.position.set(0, goalHeight / 2, -30);
+            scene.add(net);
+
+            // Ball
+            const ballGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+            const ballMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.position.set(0, 0.5, 15);
+            ball.castShadow = true;
+            scene.add(ball);
+
+            const patternGeometry = new THREE.SphereGeometry(0.51, 32, 32);
+            const patternMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000,
+                wireframe: true,
+                wireframeLinewidth: 2
+            });
+            const ballPattern = new THREE.Mesh(patternGeometry, patternMaterial);
+            ball.add(ballPattern);
+
+            // Player
+            const playerGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+            const playerMaterial = new THREE.MeshLambertMaterial({ color: 0x0066ff });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 1, 20);
+            player.castShadow = true;
+            scene.add(player);
+
+            // Goalkeeper
+            const gkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+            const gkMaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+            goalkeeper = new THREE.Mesh(gkGeometry, gkMaterial);
+            goalkeeper.position.set(0, 1, -27);
+            goalkeeper.castShadow = true;
+            scene.add(goalkeeper);
+
+            // Trajectory line
+            const trajectoryMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xffff00, 
+                linewidth: 3,
+                transparent: true,
+                opacity: 0.8
+            });
+            const trajectoryGeometry = new THREE.BufferGeometry();
+            trajectoryLine = new THREE.Line(trajectoryGeometry, trajectoryMaterial);
+            scene.add(trajectoryLine);
+
+            setupControls();
+            updateControlsDisplay();
+            animate();
+        }
+
+        function setupControls() {
+            window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', onResize);
+
+            document.getElementById('restartBtn').addEventListener('click', restart);
+
+            if (isMobile) {
+                document.getElementById('joystickBase').style.display = 'flex';
+                document.getElementById('shootBtn').style.display = 'flex';
+                document.getElementById('powerShootBtn').style.display = 'flex';
+
+                const joystickBase = document.getElementById('joystickBase');
+                const joystickStick = document.getElementById('joystickStick');
+                let joystickActive = false;
+
+                joystickBase.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    joystickActive = true;
+                });
+
+                joystickBase.addEventListener('touchmove', (e) => {
+                    if (!joystickActive) return;
+                    e.preventDefault();
+
+                    const touch = e.touches[0];
+                    const rect = joystickBase.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+
+                    let deltaX = touch.clientX - centerX;
+                    let deltaY = touch.clientY - centerY;
+
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    const maxDistance = 40;
+
+                    if (distance > maxDistance) {
+                        deltaX = (deltaX / distance) * maxDistance;
+                        deltaY = (deltaY / distance) * maxDistance;
+                    }
+
+                    joystickStick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+                    joystick.x = deltaX / maxDistance;
+                    joystick.y = deltaY / maxDistance;
+                });
+
+                joystickBase.addEventListener('touchend', () => {
+                    joystickActive = false;
+                    joystickStick.style.transform = 'translate(-50%, -50%)';
+                    joystick.x = 0;
+                    joystick.y = 0;
+                });
+
+                document.getElementById('shootBtn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    shootTriggered = true;
+                    setTimeout(() => shootTriggered = false, 100);
+                });
+
+                const powerShootBtn = document.getElementById('powerShootBtn');
+                const powerBar = document.getElementById('powerBar');
+                const powerBarFill = document.getElementById('powerBarFill');
+
+                powerShootBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    powerShoot.active = true;
+                    powerShoot.power = 0;
+                    powerShootBtn.classList.add('active');
+                    powerBar.style.display = 'block';
+
+                    powerInterval = setInterval(() => {
+                        powerShoot.power += 2;
+                        if (powerShoot.power > 100) powerShoot.power = 0;
+
+                        powerBarFill.style.width = powerShoot.power + '%';
+                        powerBarFill.style.backgroundColor = 
+                            powerShoot.power < 33 ? '#00ff00' : 
+                            powerShoot.power < 66 ? '#ffff00' : '#ff0000';
+                    }, 20);
+                });
+
+                powerShootBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    if (powerInterval) {
+                        clearInterval(powerInterval);
+                    }
+                    powerShootBtn.classList.remove('active');
+                    powerBar.style.display = 'none';
+                    
+                    setTimeout(() => {
+                        powerShoot.active = false;
+                    }, 50);
+                });
+            }
+        }
+
+        function updateControlsDisplay() {
+            const controlsDiv = document.getElementById('controls');
+            if (isMobile) {
+                controlsDiv.innerHTML = `
+                    <div>🕹️ Use Joystick to move</div>
+                    <div>⚽ Press buttons to shoot</div>
+                    <div style="margin-top: 8px;"><span style="color: #ff0000;">🧤 Red</span>: Goalkeeper</div>
+                `;
+            } else {
+                controlsDiv.innerHTML = `
+                    <div>⌨️ WASD / Arrow Keys: Move</div>
+                    <div>SPACE: Kick ball</div>
+                    <div style="margin-top: 8px;"><span style="color: #ff0000;">🧤 Red</span>: Goalkeeper</div>
+                `;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Player movement
+            const speed = 0.2;
+            if (keys['arrowup'] || keys['w']) player.position.z -= speed;
+            if (keys['arrowdown'] || keys['s']) player.position.z += speed;
+            if (keys['arrowleft'] || keys['a']) player.position.x -= speed;
+            if (keys['arrowright'] || keys['d']) player.position.x += speed;
+
+            if (joystick.x !== 0 || joystick.y !== 0) {
+                player.position.x += joystick.x * speed;
+                player.position.z += joystick.y * speed;
+            }
+
+            player.position.x = Math.max(-18, Math.min(18, player.position.x));
+            player.position.z = Math.max(-28, Math.min(28, player.position.z));
+
+            // Ball physics
+            if (ballVelocity.length() > 0.01) {
+                ball.position.add(ballVelocity);
+
+                if (ball.position.y > 0.5) {
+                    ballVelocity.x *= airResistance;
+                    ballVelocity.z *= airResistance;
+                    ballVelocity.y += gravity * 0.016;
+                }
+
+                if (ball.position.y <= 0.5) {
+                    ball.position.y = 0.5;
+
+                    if (ballVelocity.y < -0.1) {
+                        ballVelocity.y *= -bounceDamping;
+                    } else {
+                        ballVelocity.y = 0;
+                    }
+
+                    const groundSpeed = Math.sqrt(ballVelocity.x * ballVelocity.x + ballVelocity.z * ballVelocity.z);
+                    if (groundSpeed > 0.01) {
+                        ballVelocity.x *= friction;
+                        ballVelocity.z *= friction;
+
+                        const spinEffect = ballSpin.clone().multiplyScalar(0.01);
+                        ballVelocity.add(spinEffect);
+                    } else {
+                        ballVelocity.x = 0;
+                        ballVelocity.z = 0;
+                        ballSpin.multiplyScalar(0.9);
+                    }
+                }
+
+                const rotationAxis = new THREE.Vector3(-ballVelocity.z, 0, ballVelocity.x).normalize();
+                const rotationSpeed = ballVelocity.length() * 0.1;
+                ball.rotateOnWorldAxis(rotationAxis, rotationSpeed);
+
+                ballSpin.multiplyScalar(spinDecay);
+            }
+
+            // Ball boundaries
+            if (ball.position.x < -19.5 || ball.position.x > 19.5) {
+                ballVelocity.x *= -0.7;
+                ball.position.x = Math.max(-19.5, Math.min(19.5, ball.position.x));
+            }
+
+            if (ball.position.z > 29.5) {
+                ballVelocity.z *= -0.7;
+                ball.position.z = 29.5;
+            }
+
+            if (ball.position.z < -29.5) {
+                if (ball.position.x > -4 && ball.position.x < 4 && ball.position.y < 4) {
+                    // Goal scored
+                } else {
+                    ballVelocity.z *= -0.7;
+                    ball.position.z = -29.5;
+                }
+            }
+
+            // Player kicks ball
+            const distToBall = player.position.distanceTo(ball.position);
+
+            if (distToBall < 1.5 && ballVelocity.length() < 0.1) {
+                const direction = new THREE.Vector3()
+                    .subVectors(ball.position, player.position)
+                    .normalize();
+
+                const kickPower = powerShoot.active ? 
+                    0.5 + (powerShoot.power * 0.01) : 0.8;
+
+                const points = [];
+                let simPos = ball.position.clone();
+                let simVel = direction.clone().multiplyScalar(kickPower);
+                simVel.y = powerShoot.active ? 0.2 : 0.3;
+
+                for (let i = 0; i < 40; i++) {
+                    points.push(simPos.clone());
+                    simPos.add(simVel);
+                    simVel.y += gravity * 0.016;
+                    simVel.multiplyScalar(airResistance);
+
+                    if (simPos.y < 0.1) {
+                        simPos.y = 0.1;
+                        simVel.y *= -bounceDamping;
+                    }
+
+                    if (simPos.z < -30 || simPos.z > 30) break;
+                }
+
+                trajectoryLine.geometry.setFromPoints(points);
+                trajectoryLine.visible = true;
+            } else {
+                trajectoryLine.visible = false;
+            }
+
+            if (distToBall < 1.2 && (keys[' '] || shootTriggered) && !powerShoot.active) {
+                const direction = new THREE.Vector3()
+                    .subVectors(ball.position, player.position)
+                    .normalize();
+                ballVelocity.copy(direction.multiplyScalar(0.8));
+                ballVelocity.y = 0.3;
+
+                ballSpin.set(
+                    (Math.random() - 0.5) * 0.5,
+                    0,
+                    (Math.random() - 0.5) * 0.5
+                );
+
+                shootTriggered = false;
+                trajectoryLine.visible = false;
+            }
+
+            if (distToBall < 1.2 && !powerShoot.active && powerShoot.power > 0) {
+                const direction = new THREE.Vector3()
+                    .subVectors(ball.position, player.position)
+                    .normalize();
+
+                const power = 0.5 + (powerShoot.power * 0.01);
+                ballVelocity.copy(direction.multiplyScalar(power));
+                ballVelocity.y = 0.2;
+
+                ballSpin.set(
+                    (Math.random() - 0.5) * 0.2,
+                    0,
+                    (Math.random() - 0.5) * 0.2
+                );
+
+                powerShoot.power = 0;
+                trajectoryLine.visible = false;
+            }
+
+            // Goalkeeper AI
+            const ballDistToGoal = Math.sqrt(
+                Math.pow(ball.position.x - goalkeeper.position.x, 2) +
+                Math.pow(ball.position.z - goalkeeper.position.z, 2)
+            );
+
+            if (ballVelocity.length() < 0.2) {
+                goalkeeper.position.x += gkDirection * 0.12;
+                if (goalkeeper.position.x > 3 || goalkeeper.position.x < -3) {
+                    gkDirection *= -1;
+                }
+            } else {
+                const targetX = ball.position.x * 0.7;
+                const diffX = targetX - goalkeeper.position.x;
+                if (Math.abs(diffX) > 0.5) {
+                    goalkeeper.position.x += Math.sign(diffX) * 0.2;
+                }
+                goalkeeper.position.x = Math.max(-3.5, Math.min(3.5, goalkeeper.position.x));
+            }
+
+            if (!gkJumping && ballDistToGoal < 8 && ball.position.z < -20 && ballVelocity.z < -0.1) {
+                const ballToGkDist = Math.abs(ball.position.x - goalkeeper.position.x);
+
+                if (ballToGkDist < 4 && Math.random() > 0.4) {
+                    gkJumping = true;
+
+                    const jumpDir = Math.sign(ball.position.x - goalkeeper.position.x);
+                    gkVelocity.set(jumpDir * 0.3, 0.4, 0);
+                }
+            }
+
+            if (gkJumping) {
+                goalkeeper.position.add(gkVelocity);
+                gkVelocity.y -= 0.04;
+
+                if (goalkeeper.position.y <= 1) {
+                    goalkeeper.position.y = 1;
+                    gkJumping = false;
+                    gkVelocity.set(0, 0, 0);
+                }
+
+                const gkToBall = goalkeeper.position.distanceTo(ball.position);
+                if (gkToBall < 1.5) {
+                    const blockDir = new THREE.Vector3()
+                        .subVectors(ball.position, goalkeeper.position)
+                        .normalize();
+                    ballVelocity.copy(blockDir.multiplyScalar(0.4));
+                    ballVelocity.y = 0.3;
+                }
+            }
+
+            if (!gkJumping) {
+                const gkDistToBall = goalkeeper.position.distanceTo(ball.position);
+                if (gkDistToBall < 1.8 && ball.position.z < -25) {
+                    const blockDir = new THREE.Vector3()
+                        .subVectors(ball.position, goalkeeper.position)
+                        .normalize();
+                    ballVelocity.copy(blockDir.multiplyScalar(0.5));
+                    ballVelocity.y = 0.3;
+                }
+            }
+
+            // Goal detection
+            if (ball.position.z < -29 && 
+                ball.position.x > -4 && 
+                ball.position.x < 4 &&
+                ball.position.y < 4) {
+                score++;
+                document.getElementById('score').textContent = 'Score: ' + score;
+                
+                const goalMsg = document.getElementById('goalMessage');
+                goalMsg.style.display = 'block';
+                setTimeout(() => goalMsg.style.display = 'none', 2000);
+
+                ball.position.set(0, 0.5, 15);
+                ballVelocity.set(0, 0, 0);
+                ballSpin.set(0, 0, 0);
+                player.position.set(0, 1, 20);
+            }
+
+            // Camera follows
+            const avgX = (player.position.x + ball.position.x) / 2;
+            const avgZ = (player.position.z + ball.position.z) / 2;
+            camera.position.x = avgX * 0.3;
+            camera.position.z = avgZ * 0.5 + 25;
+            camera.lookAt(avgX * 0.5, 0, avgZ * 0.5);
+
+            renderer.render(scene, camera);
+        }
+
+        function restart() {
+            ball.position.set(0, 0.5, 15);
+            ballVelocity.set(0, 0, 0);
+            ballSpin.set(0, 0, 0);
+            player.position.set(0, 1, 20);
+            goalkeeper.position.set(0, 1, -27);
+            gkVelocity.set(0, 0, 0);
+            gkJumping = false;
+            score = 0;
+            document.getElementById('score').textContent = 'Score: 0';
+            document.getElementById('goalMessage').style.display = 'none';
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+  </html>
